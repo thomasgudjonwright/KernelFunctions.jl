@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Deep Kernel Learning · KernelFunctions</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit">KernelFunctions</span></div><form class="docs-search" action="../../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../userguide/">User Guide</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../kernel_ridge_regression/">Kernel Ridge Regression</a></li><li><a class="tocitem" href="../train_kernel_parameters/">Training kernel parameters</a></li><li><a class="tocitem" href="../gaussianprocesspriors/">Gaussian process priors</a></li><li><a class="tocitem" href="../svm/">SVM</a></li><li class="is-active"><a class="tocitem" href>Deep Kernel Learning</a><ul class="internal"><li><a class="tocitem" href="#Package-loading"><span>Package loading</span></a></li><li><a class="tocitem" href="#Data-creation"><span>Data creation</span></a></li><li><a class="tocitem" href="#Model-definition"><span>Model definition</span></a></li><li><a class="tocitem" href="#Training"><span>Training</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../kernels/">Kernel Functions</a></li><li><a class="tocitem" href="../../transform/">Input Transforms</a></li><li><a class="tocitem" href="../../metrics/">Metrics</a></li><li><a class="tocitem" href="../../theory/">Theory</a></li><li><a class="tocitem" href="../../create_kernel/">Custom Kernels</a></li><li><a class="tocitem" href="../../api/">API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Deep Kernel Learning</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Deep Kernel Learning</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/JuliaGaussianProcesses/KernelFunctions.jl/blob/master/examples/deepkernellearning.jl" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Deep-Kernel-Learning-with-Flux"><a class="docs-heading-anchor" href="#Deep-Kernel-Learning-with-Flux">Deep Kernel Learning with Flux</a><a id="Deep-Kernel-Learning-with-Flux-1"></a><a class="docs-heading-anchor-permalink" href="#Deep-Kernel-Learning-with-Flux" title="Permalink"></a></h1><h2 id="Package-loading"><a class="docs-heading-anchor" href="#Package-loading">Package loading</a><a id="Package-loading-1"></a><a class="docs-heading-anchor-permalink" href="#Package-loading" title="Permalink"></a></h2><p>We use a couple of useful packages to plot and optimize the different hyper-parameters</p><pre><code class="language-">using KernelFunctions
+using Flux
+using Distributions, LinearAlgebra
+using Plots
+using ProgressMeter
+using AbstractGPs
+pyplot();
+default(; legendfontsize=15.0, linewidth=3.0);
+nothing #hide</code></pre><h2 id="Data-creation"><a class="docs-heading-anchor" href="#Data-creation">Data creation</a><a id="Data-creation-1"></a><a class="docs-heading-anchor-permalink" href="#Data-creation" title="Permalink"></a></h2><p>We create a simple 1D Problem with very different variations</p><pre><code class="language-">xmin = -3;
+xmax = 3; # Limits
+N = 150
+noise = 0.01
+x_train = collect(eachrow(rand(Uniform(xmin, xmax), N))) # Training dataset
+target_f(x) = sinc(abs(x)^abs(x)) # We use sinc with a highly varying value
+target_f(x::AbstractArray) = target_f(first(x))
+y_train = target_f.(x_train) + randn(N) * noise
+x_test = collect(eachrow(range(xmin, xmax; length=200))) # Testing dataset
+spectral_mixture_kernel()</code></pre><h2 id="Model-definition"><a class="docs-heading-anchor" href="#Model-definition">Model definition</a><a id="Model-definition-1"></a><a class="docs-heading-anchor-permalink" href="#Model-definition" title="Permalink"></a></h2><p>We create a neural net with 2 layers and 10 units each The data is passed through the NN before being used in the kernel</p><pre><code class="language-julia">neuralnet = Chain(Dense(1, 20), Dense(20, 30), Dense(30, 5))</code></pre><pre class="documenter-example-output">Chain(Dense(1, 20), Dense(20, 30), Dense(30, 5))</pre><p>We use two cases :</p><ul><li>The Squared Exponential Kernel</li></ul><pre><code class="language-julia">k = transform(SqExponentialKernel(), FunctionTransform(neuralnet))</code></pre><pre class="documenter-example-output">Squared Exponential Kernel
+	- Function Transform: Chain(Dense(1, 20), Dense(20, 30), Dense(30, 5))</pre><p>We use AbstractGPs.jl to define our model</p><pre><code class="language-">gpprior = GP(k) # GP Prior
+fx = AbstractGPs.FiniteGP(gpprior, x_train, noise) # Prior on f
+fp = posterior(fx, y_train) # Posterior of f</code></pre><p>This compute the log evidence of <code>y</code>, which is going to be used as the objective</p><pre><code class="language-julia">loss(y) = -logpdf(fx, y)
+
+@info &quot;Init Loss = $(loss(y_train))&quot;</code></pre><pre class="documenter-example-output">┌ Error: Exception while generating log record in module Main.ex-deepkernellearning at none:2
+│   exception =
+│    UndefVarError: fx not defined
+│    Stacktrace:
+│     [1] loss(::Array{Float64,1}) at ./none:1
+│     [2] top-level scope at logging.jl:331
+│     [3] eval at ./boot.jl:331 [inlined]
+│     [4] #15 at /home/runner/.julia/packages/Documenter/FuXcO/src/Expanders.jl:555 [inlined]
+│     [5] cd(::Documenter.Expanders.var&quot;#15#18&quot;{Module,Expr}, ::String) at ./file.jl:104
+│     [6] (::Documenter.Expanders.var&quot;#14#17&quot;{Documenter.Documents.Page,Module,Expr})() at /home/runner/.julia/packages/Documenter/FuXcO/src/Expanders.jl:554
+│     [7] (::IOCapture.var&quot;#2#3&quot;{Symbol,Documenter.Expanders.var&quot;#14#17&quot;{Documenter.Documents.Page,Module,Expr},Base.PipeEndpoint,Base.PipeEndpoint,Pipe,Array{UInt8,1}})() at /home/runner/.julia/packages/IOCapture/wJ3yD/src/IOCapture.jl:88
+│     [8] with_logstate(::Function, ::Any) at ./logging.jl:408
+│     [9] with_logger at ./logging.jl:514 [inlined]
+│     [10] iocapture(::Documenter.Expanders.var&quot;#14#17&quot;{Documenter.Documents.Page,Module,Expr}; throwerrors::Symbol, color::Bool) at /home/runner/.julia/packages/IOCapture/wJ3yD/src/IOCapture.jl:86
+│     [11] runner(::Type{Documenter.Expanders.ExampleBlocks}, ::Markdown.Code, ::Documenter.Documents.Page, ::Documenter.Documents.Document) at /home/runner/.julia/packages/Documenter/FuXcO/src/Expanders.jl:553
+│     [12] dispatch(::Type{Documenter.Expanders.ExpanderPipeline}, ::Markdown.Code, ::Vararg{Any,N} where N) at /home/runner/.julia/packages/Documenter/FuXcO/src/Utilities/Selectors.jl:170
+│     [13] expand(::Documenter.Documents.Document) at /home/runner/.julia/packages/Documenter/FuXcO/src/Expanders.jl:42
+│     [14] runner(::Type{Documenter.Builder.ExpandTemplates}, ::Documenter.Documents.Document) at /home/runner/.julia/packages/Documenter/FuXcO/src/Builder.jl:227
+│     [15] dispatch(::Type{Documenter.Builder.DocumentPipeline}, ::Documenter.Documents.Document) at /home/runner/.julia/packages/Documenter/FuXcO/src/Utilities/Selectors.jl:170
+│     [16] #2 at /home/runner/.julia/packages/Documenter/FuXcO/src/Documenter.jl:249 [inlined]
+│     [17] cd(::Documenter.var&quot;#2#3&quot;{Documenter.Documents.Document}, ::String) at ./file.jl:104
+│     [18] #makedocs#1 at /home/runner/.julia/packages/Documenter/FuXcO/src/Documenter.jl:248 [inlined]
+│     [19] top-level scope at /home/runner/work/KernelFunctions.jl/KernelFunctions.jl/docs/make.jl:27
+│     [20] include(::Function, ::Module, ::String) at ./Base.jl:380
+│     [21] include(::Module, ::String) at ./Base.jl:368
+│     [22] exec_options(::Base.JLOptions) at ./client.jl:296
+│     [23] _start() at ./client.jl:506
+└ @ Main.ex-deepkernellearning none:2</pre><p>Flux will automatically extract all the parameters of the kernel</p><pre><code class="language-julia">ps = Flux.params(k)</code></pre><pre class="documenter-example-output">Params([])</pre><p>We show the initial prediction with the untrained model</p><pre><code class="language-">p_init = Plots.plot(
+    vcat(x_test...), target_f; lab=&quot;true f&quot;, title=&quot;Loss = $(loss(y_train))&quot;
+)
+Plots.scatter!(vcat(x_train...), y_train; lab=&quot;data&quot;)
+pred = marginals(fp(x_test))
+Plots.plot!(vcat(x_test...), mean.(pred); ribbon=std.(pred), lab=&quot;Prediction&quot;)</code></pre><h2 id="Training"><a class="docs-heading-anchor" href="#Training">Training</a><a id="Training-1"></a><a class="docs-heading-anchor-permalink" href="#Training" title="Permalink"></a></h2><pre><code class="language-">anim = Animation()
+nmax = 1000
+opt = Flux.ADAM(0.1)
+@showprogress for i in 1:nmax
+    global grads = gradient(ps) do
+        loss(y_train)
+    end
+    Flux.Optimise.update!(opt, ps, grads)
+    if i % 100 == 0
+        @info &quot;$i/$nmax&quot;
+        L = loss(y_train)</code></pre><p>@info &quot;Loss = L&quot;</p><pre><code class="language-">        p = Plots.plot(
+            vcat(x_test...), target_f; lab=&quot;true f&quot;, title=&quot;Loss = $(loss(y_train))&quot;
+        )
+        p = Plots.scatter!(vcat(x_train...), y_train; lab=&quot;data&quot;)
+        pred = marginals(posterior(fx, y_train)(x_test))
+        Plots.plot!(vcat(x_test...), mean.(pred); ribbon=std.(pred), lab=&quot;Prediction&quot;)
+        frame(anim)
+        display(p)
+    end
+end
+gif(anim; fps=5)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../svm/">« SVM</a><a class="docs-footer-nextpage" href="../../kernels/">Kernel Functions »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Monday 18 January 2021 22:39">Monday 18 January 2021</span>. Using Julia version 1.5.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

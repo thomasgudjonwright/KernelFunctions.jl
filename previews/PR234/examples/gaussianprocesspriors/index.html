@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Gaussian process priors · KernelFunctions</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit">KernelFunctions</span></div><form class="docs-search" action="../../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../userguide/">User Guide</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../kernel_ridge_regression/">Kernel Ridge Regression</a></li><li><a class="tocitem" href="../train_kernel_parameters/">Training kernel parameters</a></li><li class="is-active"><a class="tocitem" href>Gaussian process priors</a></li><li><a class="tocitem" href="../svm/">SVM</a></li><li><a class="tocitem" href="../deepkernellearning/">Deep Kernel Learning</a></li></ul></li><li><a class="tocitem" href="../../kernels/">Kernel Functions</a></li><li><a class="tocitem" href="../../transform/">Input Transforms</a></li><li><a class="tocitem" href="../../metrics/">Metrics</a></li><li><a class="tocitem" href="../../theory/">Theory</a></li><li><a class="tocitem" href="../../create_kernel/">Custom Kernels</a></li><li><a class="tocitem" href="../../api/">API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Gaussian process priors</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Gaussian process priors</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/JuliaGaussianProcesses/KernelFunctions.jl/blob/master/examples/gaussianprocesspriors.jl" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><p>-<em>- coding: utf-8 -</em>-</p><h1 id="Gaussian-process-prior-samples"><a class="docs-heading-anchor" href="#Gaussian-process-prior-samples">Gaussian process prior samples</a><a id="Gaussian-process-prior-samples-1"></a><a class="docs-heading-anchor-permalink" href="#Gaussian-process-prior-samples" title="Permalink"></a></h1><p>The kernels defined in this package can also be used to specify the covariance of a Gaussian process prior. A Gaussian process (GP) is defined by its mean function <span>$m(\cdot)$</span> and its covariance function or kernel <span>$k(\cdot, \cdot&#39;)$</span>: $   f \sim \mathcal{GP}(m(\cdot), k(\cdot, \cdot&#39;) $ The function values of the GP at a finite number of points <span>$X = \{x_n\}_{n=1}^N$</span> follow a multivariate normal distribution with mean vector <span>$\mathbf{m}$</span> and covariance matrix <span>$\mathrm{K}$</span>, where $ \begin{align}   \mathbf{m}<em>i &amp;= m(x</em>i) \
+  \mathrm{K}<em>{i,j} &amp;= k(x</em>i, x_j) \end{align} $ where <span>$1 \le i, j \le N$</span>.</p><p>In this notebook we show samples from zero-mean GPs with different kernels.</p><pre><code class="language-julia"># Load required packages
+using KernelFunctions
+using LinearAlgebra
+using Distributions
+using Plots
+default(; lw=1.0, legendfontsize=15.0)
+using Random: seed!
+seed!(42);</code></pre><p>We now define a function that visualizes a kernel for us. We use the same randomness to obtain comparable samples.</p><pre><code class="language-julia">num_inputs = 101
+xlim = (-5, 5)
+X = reshape(collect(range(xlim...; length=num_inputs)), :, 1)
+num_samples = 11
+v = randn(num_inputs, num_samples);
+
+function visualize(k::Kernel; xref=0.0)
+    K = kernelmatrix(k, X; obsdim=1)
+    L = cholesky(K + 1e-6 * I)
+    f = L.L * v
+
+    p_kernel_2d = heatmap(
+        K;
+        yflip=true,
+        colorbar=false,
+        ylabel=string(k),
+        framestyle=:none,
+        #color=:blues,
+        vlim=(0, 1),
+        title=raw&quot;$k(x, x&#39;)$&quot;,
+    )
+
+    p_kernel_cut = plot(
+        X,
+        k.(X, xref);
+        title=string(raw&quot;$k(x, &quot;, xref, raw&quot;)$&quot;),
+        xlim=xlim,
+        xticks=(xlim, xlim),
+        label=nothing,
+    )
+
+    p_samples = plot(
+        X,
+        f;
+        c=&quot;blue&quot;,
+        title=raw&quot;$f(x)$&quot;,
+        ylim=(-3, 3),
+        xlim=xlim,
+        xticks=(xlim, xlim),
+        label=nothing,
+    )
+
+    return plot(p_kernel_2d, p_kernel_cut, p_samples; layout=(1, 3), xlabel=raw&quot;$x$&quot;)
+end</code></pre><pre class="documenter-example-output">visualize (generic function with 1 method)</pre><p>We can now visualize a kernel and show samples from a Gaussian process with this kernel:</p><pre><code class="language-">visualize(SqExponentialKernel())</code></pre><p>This also allows us to compare different kernels:</p><pre><code class="language-">kernel_classes = [Matern12Kernel, Matern32Kernel, Matern52Kernel, SqExponentialKernel]
+plot(
+    [visualize(k()) for k in kernel_classes]...,
+    #layout=(length(kernel_classes), 1)
+)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../train_kernel_parameters/">« Training kernel parameters</a><a class="docs-footer-nextpage" href="../svm/">SVM »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Monday 18 January 2021 22:39">Monday 18 January 2021</span>. Using Julia version 1.5.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
